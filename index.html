@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BOZKIR Prolog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700;800&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Noto+Sans+Old+Turkic&display=swap">
+<style>
+/* Layout: full-screen WebGL canvas, HUD and story panels layered on top. One deliberate night look. */
+:root {
+  --night: #0d1018;      /* panel ground */
+  --felt: #ece2cc;       /* text, like undyed felt */
+  --felt-dim: #b3a78f;
+  --gold: #d9a441;       /* Tengri gold: titles, objectives */
+  --ember: #d4512a;      /* danger, health */
+  --sky: #7fd2ff;        /* the sky hammer */
+  --line: rgba(236, 226, 204, .18);
+  --display: "Alegreya SC", "Palatino Linotype", Palatino, Georgia, serif;
+  --body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --rune: "Noto Sans Old Turkic", serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; background: #07090f; color: var(--felt); font-family: var(--body); overflow: hidden; }
+canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+[hidden] { display: none !important; }
+kbd { font-family: var(--body); font-weight: 700; font-size: .78em; padding: .05em .45em; border: 1px solid var(--felt-dim); border-bottom-width: 2px; border-radius: 4px; color: var(--felt); background: rgba(255,255,255,.06); }
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* felt panel edge: a stitched zigzag like a yurt band */
+.band { background:
+  linear-gradient(135deg, transparent 6px, var(--gold) 6px 7px, transparent 7px) 0 0 / 12px 6px repeat-x,
+  linear-gradient(45deg, transparent 6px, var(--gold) 6px 7px, transparent 7px) 6px 0 / 12px 6px repeat-x;
+  height: 6px; opacity: .55; }
+
+/* ---------- loading & menu ---------- */
+#loading, #menu, #deathScreen, #endScreen, #pause { position: fixed; inset: 0; z-index: 40; display: flex; }
+#loading { align-items: center; justify-content: center; background: #07090f; flex-direction: column; gap: 14px; }
+#loading .bar { width: min(320px, 70vw); height: 3px; background: var(--line); }
+#loadFill { height: 100%; width: 0; background: var(--gold); transition: width .2s; }
+#loadText { font-size: 14px; color: var(--felt-dim); letter-spacing: .08em; }
+#menu { background: linear-gradient(90deg, rgba(7,9,15,.92) 0%, rgba(7,9,15,.75) 38%, rgba(7,9,15,0) 70%);
+  align-items: center; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.menuInner { max-width: 520px; padding: 0 clamp(8px, 5vw, 72px); display: grid; gap: 22px; }
+.rune { font-family: var(--rune); color: var(--gold); font-size: 22px; letter-spacing: .3em; opacity: .85; }
+h1.logo { font-family: var(--display); font-weight: 800; font-size: clamp(56px, 11vw, 112px); line-height: .85; margin: 0; letter-spacing: .04em; color: var(--felt); text-shadow: 0 2px 30px rgba(217,164,65,.25); }
+.sub { font-family: var(--display); font-size: clamp(18px, 2.4vw, 24px); color: var(--gold); margin: -6px 0 0; }
+.lede { font-size: 17px; line-height: 1.5; color: var(--felt-dim); margin: 0; max-width: 46ch; }
+.btnMain { justify-self: start; font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .06em; padding: 12px 34px; background: var(--gold); color: #1a1208; border: 0; border-radius: 2px; cursor: pointer; box-shadow: 0 0 0 1px rgba(255,255,255,.15) inset; }
+.btnMain:hover { background: #e8b553; }
+.chapters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chapters span { font-size: 13px; color: var(--felt-dim); letter-spacing: .08em; text-transform: uppercase; margin-right: 4px; }
+.chip { font-size: 14px; padding: 6px 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); border-radius: 2px; cursor: pointer; }
+.chip:hover { border-color: var(--gold); color: var(--gold); }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; color: var(--felt-dim); }
+.keys dt { text-align: right; } .keys dd { margin: 0; }
+.note { font-size: 13px; color: var(--felt-dim); opacity: .8; margin: 0; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+.bars { position: absolute; left: max(20px, env(safe-area-inset-left, 0px)); bottom: max(22px, env(safe-area-inset-bottom, 0px)); display: grid; gap: 6px; width: min(280px, 60vw); }
+.bars .lbl { font-family: var(--display); font-size: 15px; color: var(--felt); display: flex; justify-content: space-between; }
+.meter { height: 9px; background: rgba(0,0,0,.55); border: 1px solid var(--line); position: relative; overflow: hidden; }
+.meter > i { position: absolute; inset: 0 auto 0 0; width: 100%; transition: width .15s; }
+#hpFill { background: linear-gradient(90deg, #8f2a17, var(--ember)); }
+.meter.thin { height: 4px; } #stFill { background: var(--felt-dim); }
+#charge .meter > i { background: linear-gradient(90deg, #2a6fb3, var(--sky)); }
+#charge.ready .meter { box-shadow: 0 0 12px var(--sky); border-color: var(--sky); }
+#charge.ready .lbl em { color: var(--sky); }
+#charge .lbl em { font-style: normal; font-family: var(--body); font-size: 13px; color: var(--felt-dim); }
+#objective { position: absolute; top: max(18px, env(safe-area-inset-top, 0px)); left: max(20px, env(safe-area-inset-left, 0px)); max-width: min(420px, 80vw); background: linear-gradient(90deg, rgba(13,16,24,.85), rgba(13,16,24,0)); padding: 10px 40px 10px 14px; border-left: 2px solid var(--gold); }
+#objective small { display: block; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+#objText { font-size: 18px; font-weight: 500; }
+#objective.pop { animation: pop .5s ease; }
+@keyframes pop { 0% { transform: translateX(-12px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+#toast { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: clamp(20px, 3vw, 30px); color: var(--felt); text-shadow: 0 2px 12px #000; white-space: nowrap; }
+#toast.in { animation: toastIn 1.8s ease both; }
+@keyframes toastIn { 0% { opacity: 0; transform: translate(-50%, 8px); } 12% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+#prompt { position: absolute; left: 50%; bottom: 26%; transform: translateX(-50%); background: rgba(13,16,24,.8); border: 1px solid var(--line); padding: 7px 14px; font-size: 16px; }
+#holdBar { position: absolute; left: 50%; bottom: calc(26% - 14px); transform: translateX(-50%); width: 180px; height: 4px; background: rgba(0,0,0,.6); }
+#holdFill { height: 100%; background: var(--gold); width: 0; }
+#hint { position: absolute; right: max(20px, env(safe-area-inset-right, 0px)); top: max(18px, env(safe-area-inset-top, 0px)); max-width: min(360px, 70vw); background: rgba(13,16,24,.8); border: 1px solid var(--line); padding: 10px 14px; font-size: 15px; line-height: 1.5; color: var(--felt); }
+#hint b { color: var(--gold); font-weight: 700; }
+#hurt { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(140,20,8,.65) 100%); }
+#marker { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; margin: -18px 0 0 -40px; width: 80px; }
+#marker::before { content: ""; width: 12px; height: 12px; border: 2px solid var(--gold); transform: rotate(45deg); box-shadow: 0 0 10px rgba(217,164,65,.6); }
+#markerDist { font-size: 12px; color: var(--gold); text-shadow: 0 1px 4px #000; white-space: nowrap; }
+#letterbox::before, #letterbox::after { content: ""; position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height .6s ease; }
+#letterbox::before { top: 0; } #letterbox::after { bottom: 0; }
+#letterbox.on::before, #letterbox.on::after { height: 9vh; }
+#letterbox { position: fixed; inset: 0; z-index: 9; pointer-events: none; }
+
+/* ---------- dialogue ---------- */
+#dialogue { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); bottom: max(4vh, env(safe-area-inset-bottom, 0px)); width: min(760px, calc(100vw - 32px)); background: rgba(13,16,24,.92); border: 1px solid var(--line); padding: 0 0 16px; pointer-events: auto; cursor: pointer; }
+#dialogue .band { margin-bottom: 12px; }
+#dlgWho { font-family: var(--display); font-weight: 700; font-size: 20px; padding: 0 22px; letter-spacing: .03em; }
+#dlgText { font-size: 19px; line-height: 1.5; padding: 4px 22px 0; min-height: 1.5em; max-width: 65ch; }
+#dialogue.italic #dlgText { font-style: italic; color: var(--felt-dim); }
+#dlgMore { position: absolute; right: 16px; bottom: 10px; font-size: 12px; color: var(--felt-dim); }
+#dlgChoices { display: grid; gap: 6px; padding: 12px 18px 0; }
+#dlgChoices button { display: flex; gap: 12px; align-items: baseline; text-align: left; background: rgba(255,255,255,.03); border: 1px solid var(--line); padding: 10px 12px; font-size: 17px; cursor: pointer; }
+#dlgChoices button:hover, #dlgChoices button:focus-visible { border-color: var(--gold); background: rgba(217,164,65,.08); }
+#dlgChoices em { margin-left: auto; font-style: normal; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--felt-dim); }
+#choiceTimer { height: 2px; background: var(--ember); margin: 10px 18px 0; transition: width .1s linear; }
+
+/* ---------- title card, fade ---------- */
+#titleCard { position: fixed; z-index: 25; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; opacity: 0; transition: opacity .7s; }
+#titleCard.in { opacity: 1; }
+#tBig { font-family: var(--display); font-weight: 800; font-size: clamp(40px, 7vw, 76px); letter-spacing: .05em; text-shadow: 0 4px 30px rgba(0,0,0,.8); }
+#tSmall { font-family: var(--display); color: var(--gold); font-size: clamp(16px, 2.2vw, 22px); margin-top: 6px; text-shadow: 0 2px 10px #000; }
+#fade { position: fixed; inset: 0; z-index: 30; background: #000; opacity: 0; pointer-events: none; }
+
+/* ---------- forge mini-game ---------- */
+#forgeGame { position: fixed; z-index: 22; left: 50%; bottom: 16vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); text-align: center; pointer-events: auto; }
+#forgeGame .track { position: relative; height: 22px; background: linear-gradient(90deg, #3a1a0e, #8a3a12 50%, #3a1a0e); border: 1px solid var(--line); }
+#fZone { position: absolute; top: 0; bottom: 0; background: rgba(255,210,122,.75); box-shadow: 0 0 14px rgba(255,200,90,.8); }
+#fNeedle { position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #fff; }
+#fHits { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+#fHits i { width: 14px; height: 14px; transform: rotate(45deg); border: 1px solid var(--felt-dim); }
+#fHits i.ok { background: var(--gold); border-color: var(--gold); } #fHits i.bad { background: var(--ember); border-color: var(--ember); }
+#forgeGame p { margin: 0 0 8px; font-family: var(--display); font-size: 18px; text-shadow: 0 2px 8px #000; }
+
+/* ---------- overlays ---------- */
+#deathScreen, #pause { background: rgba(7,9,15,.78); align-items: center; justify-content: center; text-align: center; flex-direction: column; gap: 18px; }
+#deathScreen h2, #pause h2 { font-family: var(--display); font-size: clamp(36px, 6vw, 60px); margin: 0; color: var(--ember); }
+#pause h2 { color: var(--felt); }
+#endScreen { background: rgba(7,9,15,.9); align-items: center; justify-content: center; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); overflow: auto; }
+.endInner { max-width: 620px; display: grid; gap: 18px; }
+.endInner h2 { font-family: var(--display); font-weight: 800; font-size: clamp(48px, 9vw, 96px); margin: 0; line-height: .9; }
+.endInner .sub { margin: 0; }
+#endList { display: grid; gap: 8px; margin: 6px 0 0; }
+#endList div { display: grid; grid-template-columns: 150px 1fr; gap: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+#endList dt { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); padding-top: 3px; }
+#endList dd { margin: 0; font-size: 17px; }
+#endNext { color: var(--felt-dim); font-size: 16px; margin: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btnGhost { padding: 10px 22px; background: transparent; border: 1px solid var(--felt-dim); cursor: pointer; font-size: 16px; }
+.btnGhost:hover { border-color: var(--gold); color: var(--gold); }
+@media (max-width: 560px) { #endList div { grid-template-columns: 1fr; gap: 2px; } .keys { font-size: 13px; } }
+@media (prefers-reduced-motion: reduce) { #objective.pop, #toast.in { animation: none; } }
+</style>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.js", "three/addons/": "./lib/addons/" } }</script>
+</head>
+<body>
+<canvas id="game" aria-label="BOZKIR oyun alanı"></canvas>
+
+<div id="loading"><div class="rune" aria-hidden="true">𐱅𐰭𐰼𐰃</div><div class="bar"><div id="loadFill"></div></div><div id="loadText">Yükleniyor…</div></div>
+
+<div id="menu" hidden>
+  <div class="menuInner">
+    <div class="rune" title="Teŋri (Göktürk yazısıyla)" aria-hidden="true">𐱅𐰭𐰼𐰃</div>
+    <h1 class="logo">BOZKIR</h1>
+    <p class="sub">Gök Tanrı'nın Mirası · Prolog: Gece Düşen Işık</p>
+    <p class="lede">Kayalı Pınar obasında çırak demirci Alp'sin. Bu gece gökten bir ışık düşecek ve Hisar askerleri ustanın sakladığı şeyin peşine düşecek.</p>
+    <button class="btnMain" type="button" data-start="1">Başla</button>
+    <div class="chapters"><span>Sahne seç</span>
+      <button class="chip" type="button" data-start="1">1 · Sabah</button>
+      <button class="chip" type="button" data-start="2">2 · Gece</button>
+      <button class="chip" type="button" data-start="3">3 · Baskın</button>
+      <button class="chip" type="button" data-start="4">4 · Miras</button>
+    </div>
+    <div class="chapters"><span>1. Perde</span>
+      <button class="chip" type="button" data-start="6">5 · Boz</button>
+      <button class="chip" type="button" data-start="7">6 · Ak Pınar</button>
+      <button class="chip" type="button" data-start="8">7 · Yanık Söğüt</button>
+      <button class="chip" type="button" data-start="9">8 · Kızılsu</button>
+      <button class="chip" type="button" data-start="10">9 · Kurgan Dağı</button>
+    </div>
+    <div class="chapters"><span>2. Perde</span>
+      <button class="chip" type="button" data-start="11">10 · Ordu-Balık</button>
+      <button class="chip" type="button" data-start="12">11 · Tuz Gölü</button>
+      <button class="chip" type="button" data-start="13">12 · Kara Orman</button>
+      <button class="chip" type="button" data-start="14">13 · Hisar'ın Altı</button>
+      <button class="chip" type="button" data-start="15">14 · Kuşatma</button>
+      <button class="chip" type="button" data-start="16">15 · İhanet</button>
+    </div>
+    <div class="chapters"><span>3. Perde</span>
+      <button class="chip" type="button" data-start="17">16 · Ergenekon</button>
+      <button class="chip" type="button" data-start="18">17 · Gök Sürüsü</button>
+      <button class="chip" type="button" data-start="19">18 · Son</button>
+    </div>
+    <dl class="keys">
+      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Yürü · <kbd>Shift</kbd> koş</dd>
+      <dt>Fare</dt><dd>Kamera (oyuna tıklayınca imleç kilitlenir)</dd>
+      <dt>Sol tık</dt><dd>Vur: art arda üç vuruş, üçüncüsü ağır</dd>
+      <dt>Sağ tık</dt><dd>Basılı tut: blok (Demir Kalkan: tam zamanında blok darbeyi geri yollar)</dd>
+      <dt><kbd>R</kbd> · <kbd>T</kbd></dt><dd>Yer Sarsıntısı · Kara Şimşek (2. Perde'de açılır)</dd>
+      <dt><kbd>Boşluk</kbd></dt><dd>Zıpla (atlıyken at sıçrar) · diyalogu geç</dd>
+      <dt><kbd>C</kbd></dt><dd>Yuvarlan</dd>
+      <dt><kbd>E</kbd></dt><dd>Etkileşim · ata bin / in</dd>
+      <dt><kbd>H</kbd></dt><dd>Islık: Boz'u çağır</dd>
+      <dt>Atta: <kbd>W</kbd> + <kbd>Shift</kbd></dt><dd>Dörtnal · <kbd>A</kbd><kbd>D</kbd> dön · <kbd>S</kbd> yavaşla · <kbd>Boşluk</kbd> sıçra · <kbd>E</kbd> in</dd>
+      <dt><kbd>F</kbd></dt><dd>Gök Gürlemesi (gök çekiçle)</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Duraklat</dd>
+    </dl>
+    <p class="note">Klavye ve fare ile oynanır. Ses için kulaklık önerilir. <button class="chip" type="button" id="quality">Grafik: Yüksek</button></p>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div id="objective" hidden><small>Görev</small><div id="objText"></div></div>
+  <div id="hint" hidden></div>
+  <div id="toast" hidden></div>
+  <div id="prompt" hidden></div>
+  <div id="holdBar" hidden><div id="holdFill"></div></div>
+  <div id="marker" hidden><span id="markerDist"></span></div>
+  <div id="hurt"></div>
+  <div class="bars">
+    <div id="charge" hidden><div class="lbl">Gök <em>F</em></div><div class="meter"><i id="chFill"></i></div></div>
+    <div class="lbl">Alp</div>
+    <div class="meter"><i id="hpFill"></i></div>
+    <div class="meter thin"><i id="stFill"></i></div>
+  </div>
+</div>
+<div id="letterbox"></div>
+
+<div id="dialogue" hidden role="dialog" aria-live="polite">
+  <div class="band"></div>
+  <div id="dlgWho"></div>
+  <div id="dlgText"></div>
+  <div id="dlgChoices" hidden></div>
+  <div id="choiceTimer" hidden></div>
+  <div id="dlgMore" hidden><kbd>Boşluk</kbd> devam</div>
+</div>
+
+<div id="forgeGame" hidden>
+  <p>İbre altın bölgedeyken vur</p>
+  <div class="track"><div id="fZone"></div><div id="fNeedle"></div></div>
+  <div id="fHits"><i></i><i></i><i></i></div>
+</div>
+
+<div id="titleCard" hidden><div id="tBig"></div><div id="tSmall"></div></div>
+<div id="fade"></div>
+
+<div id="deathScreen" hidden>
+  <h2>Düştün</h2>
+  <p class="lede">Oba hâlâ seni bekliyor.</p>
+  <div class="row"><button class="btnMain" id="retry" type="button">Sahneyi yeniden dene</button></div>
+</div>
+
+<div id="pause" hidden>
+  <h2>Duraklatıldı</h2>
+  <div class="row"><button class="btnMain" id="resume" type="button">Devam</button><button class="btnGhost" id="toMenu" type="button">Ana menü</button></div>
+</div>
+
+<div id="endScreen" hidden>
+  <div class="endInner">
+    <div class="rune" aria-hidden="true">𐱅𐰭𐰼𐰃</div>
+    <h2 id="endTitle">BOZKIR</h2>
+    <p class="sub" id="endSub">Gök Tanrı'nın Mirası</p>
+    <p class="lede" id="endLede">Prolog tamamlandı. Kuzeyde, gökten düşen dağ hâlâ tütüyor.</p>
+    <dl id="endList"></dl>
+    <p id="endNext"></p>
+    <div class="row"><button class="btnMain" id="next" type="button">1. Perde'ye devam</button><button class="btnGhost" id="again" type="button">Baştan oyna</button></div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
